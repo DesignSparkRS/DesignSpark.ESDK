@@ -29,7 +29,7 @@ moduleTypeDict = {
 strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
 
 class ModMAIN:
-    def __init__(self, debug=False, configFile='/boot/aq/aq.toml'):
+    def __init__(self, config, debug=False):
         self.logger = AppLogger.getLogger(__name__, debug)
         try:
             self.bus = smbus2.SMBus(1)
@@ -39,20 +39,12 @@ class ModMAIN:
         self.moduleNames = []
         self.sensorModules = {}
         self.sensorData = {}
-        self.configFile = configFile
-        self.configDict = {}
+        self.configDict = config
         self.location = {}
         self._parseConfig()
 
     def _parseConfig(self):
         """ Parse config when mainboard initialised """
-        try:
-            with open(self.configFile) as configFileHandle:
-                self.configDict = toml.loads(configFileHandle.read())
-            self.logger.debug("Parsed config {}".format(self.configDict))
-        except Exception as e:
-            self.logger.error("Could not parse config, reason {}".format(e))
-            raise e
 
         if self.configDict['ESDK']['gps'] is not None:
             if self.configDict['ESDK']['gps'] == True:
@@ -87,17 +79,6 @@ class ModMAIN:
                 # Ignore any that fail - the modules aren't present on the bus
                 pass
         self.logger.info("Found modules {}".format(self.moduleNames))
-
-    def getMqttConfig(self):
-        """ Return a dictionary containing MQTT config """
-        return self.configDict["mqtt"]
-
-    def getPrometheusConfig(self):
-        """ Return a dictionary containing Prometheus config, and friendly name """
-        configDict = {}
-        configDict.update(self.configDict["prometheus"])
-        configDict.update({"friendlyname":self.configDict["ESDK"]["friendlyname"]})
-        return(configDict)
 
     def getLocation(self):
         """ Return a geohash of either actual GPS location, or config file location """
@@ -153,14 +134,3 @@ class ModMAIN:
         except Exception as e:
             self.logger.error("Could not retrieve serial number, reason {}".format(e))
             return -1
-
-    def getFriendlyName(self):
-        """ Return the string of the device friendly name """
-        return self.configDict['ESDK']['friendlyname']
-
-    def getCsvEnabled(self):
-        """ Return CSV enabled value """
-        if self.configDict['local']['csv'] is not None:
-            return self.configDict['local']['csv']
-        else:
-            return False
