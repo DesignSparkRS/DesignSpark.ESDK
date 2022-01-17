@@ -9,7 +9,8 @@ import smbus2
 import toml
 import threading
 import re
-import geohash
+import subprocess
+import pkg_resources
 from gpsdclient import GPSDClient
 from . import AppLogger
 from . import MAIN, THV, CO2, PM2
@@ -41,6 +42,7 @@ class ModMAIN:
         self.sensorData = {}
         self.configDict = config
         self.location = {}
+        self.gpsStatus = {"gpsStatus": {}}
         self._parseConfig()
 
     def _parseConfig(self):
@@ -64,6 +66,18 @@ class ModMAIN:
                         self.location['lat'] = result.get("lat", "n/a")
                         self.location['lon'] = result.get("lon", "n/a")
                         self.logger.debug("GPS location {}".format(self.location))
+                        self.gpsStatus['gpsStatus'].update({'mode': result.get("mode", 0)})
+
+                    if result["class"] == "SKY":
+                        satellitesList = result.get("satellites", "")
+                        satellitesUsedCount = 0
+
+                        for satellite in satellitesList:
+                            if satellite['used']:
+                                satellitesUsedCount = satellitesUsedCount + 1
+
+                        self.gpsStatus['gpsStatus'].update({'satellitesUsed': satellitesUsedCount})
+
             except Exception as e:
                 self.logger.error("Error getting GPS location, reason {}".format(e))
 
@@ -81,16 +95,21 @@ class ModMAIN:
         self.logger.info("Found modules {}".format(self.moduleNames))
 
     def getLocation(self):
-        """ Return a geohash of either actual GPS location, or config file location """
+        """ Return either actual GPS location, or config file location """
         if self.configDict['ESDK']['gps'] == False or self.configDict['ESDK']['gps'] is None:
-            location = {}
-            location['geohash'] = geohash.encode(self.configDict['ESDK']['latitude'], self.configDict['ESDK']['longitude'])
+            location['lat'] = self.configDict['ESDK']['latitude']
+            location['lon'] = self.configDict['ESDK']['longitude']
             return location
 
         if self.configDict['ESDK']['gps'] == True:
-            location = {}
-            location['geohash'] = geohash.encode(self.location['lat'], self.location['lon'])
-            return location
+            if "lat" and "lon" in self.location:
+                return self.location
+            else:
+                return {}
+
+    def getGPSStatus(self):
+        """ Return GPS status """
+        return self.gpsStatus
 
     def createModules(self):
         """ Create dictionary of modules ready for later use """
@@ -133,4 +152,45 @@ class ModMAIN:
             return serialNumber
         except Exception as e:
             self.logger.error("Could not retrieve serial number, reason {}".format(e))
+            return -1
+
+    def getModuleVersion(self):
+        """ Return the ESDK module version """
+        return {"moduleVersion": pkg_resources.get_distribution('DesignSpark.ESDK').version}
+
+    def getUndervoltageStatus(self):
+        """ Try to read the undervoltage status """
+        try:
+            cmdOutput = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True)
+            statusData = cmdOutput.stdout.decode('ascii').strip().strip("throttled=")
+
+            code = int(statusData, 16)
+            status = {"code": code}
+            response = {"throttle_state": status}
+
+            if statusData == "0x0":
+                return response
+
+            statusBits = [[0, "Under_Voltage detected"],
+                    [1, "Arm frequency capped"],
+                    [2, "Currently throttled"],
+                    [3, "Soft temperature limit active"],
+                    [16, "Under-voltage has occurred"],
+                    [17, "Arm frequency capping has occurred"],
+                    [18, "Throttling has occurred"],
+                    [19, "Soft temperature limit has occurred"]]
+
+            statusStrings = []
+
+            for x in range(0, len(status_bits)):
+                statusBitString = statusBits[x][1]
+                if (statusCode & (1 << statusBits)):
+                    statusStrings.append(statusBitString)
+
+            status.update({"status_strings": statusStrings})
+            response = {"throttle_state": status}
+            return response
+
+        except Exception as e:
+            self.logger.error("Could not retrieve undervoltage status, reason {}".format(e))
             return -1
