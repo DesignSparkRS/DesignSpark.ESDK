@@ -11,29 +11,42 @@ import threading
 import re
 import subprocess
 import pkg_resources
+import RPi.GPIO as GPIO
 from gpsdclient import GPSDClient
 from . import AppLogger
-from . import MAIN, THV, CO2, PM2
+from . import MAIN, THV, CO2, PM2, NO2
 
 possibleModules = {
     "THV": 0x44, 
     "CO2": 0x62, 
-    "PM2": 0x69
+    "PM2": 0x69,
+    "NO2": 0x40
 }
 
 moduleTypeDict = {
     'THV': THV,
     'CO2': CO2,
-    'PM2': PM2
+    'PM2': PM2,
+    'NO2': NO2
 }
+
+# GPIOs used for board features
+SENSOR_3V3_EN = 7
+SENSOR_5V_EN = 16
+BUZZER_PIN = 26
+GPIO_LIST = [SENSOR_3V3_EN, SENSOR_5V_EN, BUZZER_PIN]
 
 strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
 
 class ModMAIN:
-    def __init__(self, config, debug=False):
-        self.logger = AppLogger.getLogger(__name__, debug)
+    def __init__(self, config, debug=False, loggingLevel='full'):
+        self.logger = AppLogger.getLogger(__name__, debug, loggingLevel)
         try:
             self.bus = smbus2.SMBus(1)
+
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(GPIO_LIST, GPIO.OUT)
+            self.buzzer_pwm = GPIO.PWM(BUZZER_PIN, 1000)
         except Exception as e:
             raise e
 
@@ -87,8 +100,14 @@ class ModMAIN:
         self.logger.debug("Starting module probe")
         for module, addr in possibleModules.items():
             try:
-                self.bus.write_byte(addr, 0)
-                self.moduleNames.append(module)
+                # ADC used on NO2 board is an annoying edge case, does not seemingly acknowledge 0x0
+                if module != "NO2":
+                    self.bus.write_byte(addr, 0)
+                    self.moduleNames.append(module)
+                else:
+                    # Instead issue reset command, and check for an acknowledgement
+                    self.bus.write_byte(addr, 0x06)
+                    self.moduleNames.append(module)
             except Exception as e:
                 # Ignore any that fail - the modules aren't present on the bus
                 pass
@@ -97,9 +116,9 @@ class ModMAIN:
     def getLocation(self):
         """ Return either actual GPS location, or config file location """
         if self.configDict['ESDK']['gps'] == False or self.configDict['ESDK']['gps'] is None:
-            location['lat'] = self.configDict['ESDK']['latitude']
-            location['lon'] = self.configDict['ESDK']['longitude']
-            return location
+            self.location['lat'] = self.configDict['ESDK']['latitude']
+            self.location['lon'] = self.configDict['ESDK']['longitude']
+            return self.location
 
         if self.configDict['ESDK']['gps'] == True:
             if "lat" and "lon" in self.location:
@@ -125,6 +144,9 @@ class ModMAIN:
 
                 if moduleName == "PM2":
                     self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModPM2()
+
+                if moduleName == "NO2":
+                    self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModNO2()
             except Exception as e:
                 self.logger.error("Could not create module {}, reason {}".format(moduleName, e))
 
@@ -182,9 +204,9 @@ class ModMAIN:
 
             statusStrings = []
 
-            for x in range(0, len(status_bits)):
+            for x in range(0, len(statusBits)):
                 statusBitString = statusBits[x][1]
-                if (statusCode & (1 << statusBits)):
+                if (code & (1 << statusBits[x][0])):
                     statusStrings.append(statusBitString)
 
             status.update({"status_strings": statusStrings})
@@ -194,3 +216,26 @@ class ModMAIN:
         except Exception as e:
             self.logger.error("Could not retrieve undervoltage status, reason {}".format(e))
             return -1
+
+    def setPower(self, vcc3=False, vcc5=False):
+        """ Switch sensor power rails according to variables passed in """
+        try:
+            self.logger.debug("Setting sensor power rails, 3V3: {}, 5V: {}".format(vcc3, vcc5))
+            GPIO.output(SENSOR_3V3_EN, vcc3)
+            GPIO.output(SENSOR_5V_EN, vcc5)
+        except Exception as e:
+            raise e
+
+    def setBuzzer(self, freq=0):
+        """ Set a PWM frequency on the buzzer output """
+        try:
+            if freq > 0:
+                self.logger.debug("Setting buzzer frequency to {}".format(freq))
+                self.buzzer_pwm.start(50)
+                self.buzzer_pwm.ChangeFrequency(freq)
+
+            if freq == 0:
+                self.logger.debug("Stopping buzzer")
+                self.buzzer_pwm.stop()
+        except Exception as e:
+            raise e
