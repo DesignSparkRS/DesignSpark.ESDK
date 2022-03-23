@@ -1,3 +1,2 @@
-build/
-DesignSpark.ESDK.egg-info/
-dist/
+venv/
+_build/
