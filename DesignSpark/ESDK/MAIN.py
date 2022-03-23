@@ -11,6 +11,9 @@ import threading
 import re
 import subprocess
 import pkg_resources
+import imp
+import inspect
+import os
 import RPi.GPIO as GPIO
 from gpsdclient import GPSDClient
 from . import AppLogger
@@ -39,7 +42,7 @@ GPIO_LIST = [SENSOR_3V3_EN, SENSOR_5V_EN, BUZZER_PIN]
 strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
 
 class ModMAIN:
-    def __init__(self, config, debug=False, loggingLevel='full'):
+    def __init__(self, config, debug=False, loggingLevel='full', pluginFolder='plugins'):
         self.logger = AppLogger.getLogger(__name__, debug, loggingLevel)
         try:
             self.bus = smbus2.SMBus(1)
@@ -56,6 +59,9 @@ class ModMAIN:
         self.configDict = config
         self.location = {}
         self.gpsStatus = {"gpsStatus": {}}
+        self.pluginFolder = pluginFolder
+        self.pluginsModuleList = []
+        self.plugins = []
         self._parseConfig()
 
     def _parseConfig(self):
@@ -154,12 +160,26 @@ class ModMAIN:
         """ Try to read all sensor modules and return a dictionary of values """
         try:
             for name, module in self.sensorModules.items():
-                self.logger.debug("Trying to read {}".format(name))
+                self.logger.debug("Trying to read sensor {}".format(name))
                 data = module.readSensors()
                 if data != -1:
                     self.sensorData.update(data)
         except Exception as e:
             self.logger.error("Could not read module {}, reason {}".format(name, e))
+
+        # Read loaded plugins
+        try:
+            for plugin in self.plugins:
+                pluginName = plugin.__class__.__name__
+                self.logger.debug("Trying to read plugin {}".format(pluginName))
+                try:
+                    data = plugin.readSensors()
+                    if data != -1:
+                        self.sensorData.update(data)
+                except Exception as e:
+                    self.logger.error("Could not read plugin {}, reason {}".format(pluginName, e))
+        except Exception as e:
+            self.logger.error("Error handling plugins, reason {}".format(e))
 
         self.logger.debug("Sensor data {}".format(self.sensorData))
         return self.sensorData
@@ -239,3 +259,31 @@ class ModMAIN:
                 self.buzzer_pwm.stop()
         except Exception as e:
             raise e
+
+    def loadPlugins(self):
+        """ Attempt to load plugins from a specified folder below the current working directory """
+        cwd = os.getcwd()
+        self.pluginFullPath = cwd + "/" + self.pluginFolder
+        self.logger.debug("Current working directory: {}, plugins path: {}".format(cwd, self.pluginFullPath))
+
+        # Create a list of available plugin modules
+        for filename in os.listdir(self.pluginFullPath):
+            modulename, extension = os.path.splitext(filename)
+            if extension == '.py':
+                file, path, descr = imp.find_module(modulename, [self.pluginFullPath])
+                if file:
+                    try:
+                        self.logger.debug("Found plugin module: {}".format(file.name))
+                        module = imp.load_module(modulename, file, path, descr)
+                        self.pluginsModuleList.append(module)
+                    except Exception as e:
+                        self.logger.error("Could not load plugin {}! Reason {}".format(file.name, e))
+
+        # Create a list of instantiated plugin classes
+        for pluginModule in self.pluginsModuleList:
+            for name, obj in inspect.getmembers(pluginModule):
+                if inspect.isclass(obj):
+                    self.logger.debug("Created plugin class {}".format(obj))
+                    self.plugins.append(obj())
+
+        self.logger.info("Loaded {} plugin(s)".format(len(self.plugins)))
