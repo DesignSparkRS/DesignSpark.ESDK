@@ -42,7 +42,7 @@ GPIO_LIST = [SENSOR_3V3_EN, SENSOR_5V_EN, BUZZER_PIN]
 strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
 
 class ModMAIN:
-    def __init__(self, config, debug=False, loggingLevel='full', pluginFolder='plugins'):
+    def __init__(self, config, debug=False, loggingLevel='full', pluginFolder=None):
         self.logger = AppLogger.getLogger(__name__, debug, loggingLevel)
         try:
             self.bus = smbus2.SMBus(1)
@@ -262,9 +262,13 @@ class ModMAIN:
 
     def loadPlugins(self):
         """ Attempt to load plugins from a specified folder below the current working directory """
-        cwd = os.getcwd()
-        self.pluginFullPath = cwd + "/" + self.pluginFolder
-        self.logger.debug("Current working directory: {}, plugins path: {}".format(cwd, self.pluginFullPath))
+        if self.pluginFolder == None:
+            cwd = os.getcwd()
+            self.pluginFullPath = cwd + "/plugins"
+            self.logger.debug("No plugin folder provided, using default")
+            self.logger.debug("Current working directory: {}, plugins path: {}".format(cwd, self.pluginFullPath))
+        else:
+            self.pluginFullPath = self.pluginFolder
 
         # Create a list of available plugin modules
         for filename in os.listdir(self.pluginFullPath):
