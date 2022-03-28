@@ -14,6 +14,7 @@ moduleVersionString = "CO20.2"
 SCD_ADDR = 0x62
 
 class ModCO2:
+    """ This is a class that handles interfacing with the ESDK-CO2 board. """
     def __init__(self):
         try:
             self.bus = smbus2.SMBus(1)
@@ -23,14 +24,19 @@ class ModCO2:
         self.__startPeriodicMeasurement()
 
     def __startPeriodicMeasurement(self):
-        """ Start periodic measurement mode, period of 5s between updated values """
+        """ Starts periodic measurement mode. """
         try:
             self.bus.write_i2c_block_data(SCD_ADDR, 0x21, [0xB1])
         except Exception as e:
             raise e
 
     def __isDataReady(self):
-        """ Query SCD4x to see if there is available readings """
+        """ Query SCD4x to see if there is available readings
+
+        :return: A boolean value indicating if there is a reading available
+        :rtype: bool
+
+        """
         try:
             write = i2c_msg.write(SCD_ADDR, [0xE4, 0xB8])
             read = i2c_msg.read(SCD_ADDR, 3)
@@ -44,7 +50,12 @@ class ModCO2:
             raise e
 
     def __readSensorData(self):
-        """ Read all available sensor data """
+        """ Reads all available sensor data
+
+        :return: A list of 9 bytes from the sensor
+        :rtype: list
+
+        """
         try:
             write = i2c_msg.write(SCD_ADDR, [0xEC, 0x05])
             read = i2c_msg.read(SCD_ADDR, 9)
@@ -54,7 +65,12 @@ class ModCO2:
             raise e
 
     def readCO2(self):
-        """ Read CO2 data from sensor if available """
+        """ Reads a CO2 value from the sensor
+
+        :return: A CO2 reading in ppm, or -1 if the sensor is not ready
+        :rtype: int
+
+        """
         try:
             if self.__isDataReady():
                 v = self.__readSensorData()
@@ -67,7 +83,21 @@ class ModCO2:
             raise e
 
     def readTempAndHumidity(self):
-        """ Read temperature and humidity from sensor if available """
+        """ Reads temperature and humidity from the sensor
+
+        :return: A dictionary containing:
+
+        .. code-block:: text
+
+            {
+                "temp":12.3,
+                "humidity":50.3
+            }
+
+        Or -1 if sensor data is unavailable
+
+        :rtype: dict, int
+        """
         try:
             if self.__isDataReady():
                 v = self.__readSensorData()
@@ -87,6 +117,24 @@ class ModCO2:
             raise e
 
     def readSensors(self):
+        """ Reads sensors and returns a dictionary containing module version, and all readings.
+
+        :return: A dictionary containing
+
+        .. code-block:: text
+            
+            {
+                "co2":{
+                    "sensor":"CO20.2",
+                    "co2":453
+                }
+            }
+            
+        Or -1 if data is unavailable
+
+        :rtype: dict, int
+
+        """
         try:
             sensorData = {}
             co2Reading = self.readCO2()

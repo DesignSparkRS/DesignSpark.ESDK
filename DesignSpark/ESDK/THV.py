@@ -15,7 +15,7 @@ moduleVersionString = "THV0.2"
 SHT_ADDR = 0x44
 SGP_ADDR = 0x59
 
-""" SGP40 commands """
+# SGP40 commands
 SGP40_MEASURE_RAW_SIGNAL = [0x26, 0x0F]
 SGP40_EXECUTE_SELF_TEST = [0x28, 0x0E]
 SGP40_TURN_HEATER_OFF = [0x36, 0x15]
@@ -24,6 +24,7 @@ SGP40_MEASURE_RAW_NO_COMP = [0x26, 0x0F, 0x80, 0x00, 0xA2, 0x66, 0x66, 0x93]
 
 
 class ModTHV:
+    """ This is a class that handles interfacing with the ESDK-THV board. """
     def __init__(self):
         self.algorithm = DFRobot_VOCAlgorithm()
         self.algorithm.vocalgorithm_init()
@@ -38,7 +39,7 @@ class ModTHV:
             self.readVocIndex()
 
     def __sgp40_crc(self, data1, data2):
-        """ Calculates a CRC for two bytes of data, according to SGP40 datasheet """
+        """ Calculates a CRC for two bytes of data, according to SGP40 datasheet. """
         ''' Taken from https://github.com/DFRobot/DFRobot_SGP40/blob/master/Python/raspberrypi/DFRobot_SGP40.py '''
         crc = 0xff
         list = [data1, data2]
@@ -53,7 +54,20 @@ class ModTHV:
         return crc
 
     def __readTempAndHumidityRaw(self):
-        """ Attempt to query SHT31 and return a dictionary of raw temperature and humidity ticks """
+        """ Queries SHT31 and returns a dictionary of raw temperature and humidity values.
+
+        :return: A dictionary containing
+
+        .. code-block:: text
+            
+            {
+                "temp":1234,
+                "humidity":5678
+            }
+
+        :rtype: dict
+
+        """
         try:
             ''' Send high repeatability measurement command without clock stretching '''
             self.bus.write_i2c_block_data(SHT_ADDR, 0x24, [0x00])
@@ -74,7 +88,20 @@ class ModTHV:
             raise e
 
     def readTempAndHumidity(self):
-        """ Attempt to query SHT31 and return a dictionary of temperature and humidity values """
+        """ Queries SHT31 and returns a dictionary of temperature and humidity values.
+
+        :return: A dictionary containing
+
+        .. code-block:: text
+            
+            {
+                "temperature":12.3,
+                "humidity":50.3
+            }
+
+        :rtype: dict
+
+        """
         try:
             v = self.__readTempAndHumidityRaw()
 
@@ -92,7 +119,11 @@ class ModTHV:
             raise e
 
     def readVocRaw(self):
-        """ Attempt to read a compensated raw VOC value """
+        """ Returns a compensated raw VOC value. 
+
+        :return: An integer VOC value
+        :rtype: int
+        """
         try:
             th = self.__readTempAndHumidityRaw()
             ''' Split values into upper and lower bytes to prepare for sending to sensor '''
@@ -122,7 +153,11 @@ class ModTHV:
             raise e
 
     def readVocIndex(self):
-        """ Attempt to read a calculated VOC index value """
+        """ Returns a calculated VOC index value.
+
+        :return: An integer VOC index value, or -1 if unavailable
+        :rtype: int
+        """
         vocRaw = self.readVocRaw()
 
         if vocRaw < 0:
@@ -132,6 +167,26 @@ class ModTHV:
             return vocIndex
 
     def readSensors(self):
+        """ Reads sensors and returns a dictionary containing module version, and all readings.
+
+        :return: A dictionary containing
+
+        .. code-block:: text
+            
+            {
+                "thv":{
+                    "sensor":"THV0.2",
+                    "temperature":21.2,
+                    "humidity":50.3,
+                    "vocIndex":100
+                }
+            }
+            
+        Or -1 if data is unavailable
+
+        :rtype: dict, int
+
+        """
         try:
             sensorData = {}
             vocIndex = self.readVocIndex()

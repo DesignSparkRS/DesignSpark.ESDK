@@ -11,6 +11,9 @@ import threading
 import re
 import subprocess
 import pkg_resources
+import imp
+import inspect
+import os
 import RPi.GPIO as GPIO
 from gpsdclient import GPSDClient
 from . import AppLogger
@@ -39,7 +42,27 @@ GPIO_LIST = [SENSOR_3V3_EN, SENSOR_5V_EN, BUZZER_PIN]
 strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
 
 class ModMAIN:
-    def __init__(self, config, debug=False, loggingLevel='full'):
+    """ This class handles the ESDK mainboard, and it's various features.
+
+    :param config: A dictionary containing configuration data with a minimum of:
+
+    .. code-block:: text
+
+        {
+            "esdk":{
+                "GPS":False
+            }
+        }
+    
+    :type config: dict
+    :param debug: Debug logging control, defaults to False
+    :type debug: bool, optional
+    :param loggingLevel: One of 'off', 'error' or 'full' to control file logging, defaults to 'full'
+    :type loggingLevel: str, optional
+    :param pluginDir: A string value containing a file path to a plugin directory, defaults to None
+    :type pluginDir: str, optional
+    """
+    def __init__(self, config, debug=False, loggingLevel='full', pluginDir=None):
         self.logger = AppLogger.getLogger(__name__, debug, loggingLevel)
         try:
             self.bus = smbus2.SMBus(1)
@@ -56,11 +79,13 @@ class ModMAIN:
         self.configDict = config
         self.location = {}
         self.gpsStatus = {"gpsStatus": {}}
+        self.pluginDir = pluginDir
+        self.pluginsModuleList = []
+        self.plugins = []
         self._parseConfig()
 
     def _parseConfig(self):
         """ Parse config when mainboard initialised """
-
         if self.configDict['ESDK']['gps'] is not None:
             if self.configDict['ESDK']['gps'] == True:
                 self.logger.info("GPS is enabled")
@@ -70,7 +95,7 @@ class ModMAIN:
                 gpsHandlerThreadHandle.start()
 
     def _gpsHandlerThread(self):
-        """ Thread for polling GPS """
+        """ Thread for polling GPS module. """
         self.logger.debug("Started GPS handling thread")
         while True:
             try:
@@ -95,7 +120,7 @@ class ModMAIN:
                 self.logger.error("Error getting GPS location, reason {}".format(e))
 
     def _probeModules(self):
-        """ Probe I2C bus to attempt to find sensor modules """
+        """ Probes I2C bus to attempt to find sensor modules. """
         self.moduleNames.clear()
         self.logger.debug("Starting module probe")
         for module, addr in possibleModules.items():
@@ -114,7 +139,20 @@ class ModMAIN:
         self.logger.info("Found modules {}".format(self.moduleNames))
 
     def getLocation(self):
-        """ Return either actual GPS location, or config file location """
+        """ Returns a dictionary containing GPS location, or configuration file location if GPS is disabled.
+
+        :return: A dictionary containing:
+
+        .. code-block:: text
+
+            {
+                "lat":0.0,
+                "lon":0.0
+            }
+
+        :rtype: dict
+
+        """
         if self.configDict['ESDK']['gps'] == False or self.configDict['ESDK']['gps'] is None:
             self.location['lat'] = self.configDict['ESDK']['latitude']
             self.location['lon'] = self.configDict['ESDK']['longitude']
@@ -127,11 +165,27 @@ class ModMAIN:
                 return {}
 
     def getGPSStatus(self):
-        """ Return GPS status """
+        """ Returns a dictionary containing GPS status. 
+
+        :return: A dictionary containing:
+
+        .. code-block:: text
+
+            {
+                "gpsStatus":{
+                    "mode":0,
+                    "satellites":13,
+                    "satellitesUsed":5
+                }
+            }
+
+        :rtype: dict
+
+        """
         return self.gpsStatus
 
     def createModules(self):
-        """ Create dictionary of modules ready for later use """
+        """ Discovers and instantiates module objects for use with ``readAllModules()``. """
         self._probeModules()
         self.logger.debug("Creating module objects")
         for moduleName in self.moduleNames:
@@ -151,21 +205,47 @@ class ModMAIN:
                 self.logger.error("Could not create module {}, reason {}".format(moduleName, e))
 
     def readAllModules(self):
-        """ Try to read all sensor modules and return a dictionary of values """
+        """ Reads all sensor modules and returns a dictionary containing sensor data. """
         try:
             for name, module in self.sensorModules.items():
-                self.logger.debug("Trying to read {}".format(name))
+                self.logger.debug("Trying to read sensor {}".format(name))
                 data = module.readSensors()
                 if data != -1:
                     self.sensorData.update(data)
         except Exception as e:
             self.logger.error("Could not read module {}, reason {}".format(name, e))
 
+        # Read loaded plugins
+        try:
+            for plugin in self.plugins:
+                pluginName = plugin.__class__.__name__
+                self.logger.debug("Trying to read plugin {}".format(pluginName))
+                try:
+                    data = plugin.readSensors()
+                    if data != -1:
+                        self.sensorData.update(data)
+                except Exception as e:
+                    self.logger.error("Could not read plugin {}, reason {}".format(pluginName, e))
+        except Exception as e:
+            self.logger.error("Error handling plugins, reason {}".format(e))
+
         self.logger.debug("Sensor data {}".format(self.sensorData))
         return self.sensorData
 
     def getSerialNumber(self):
-        """ Try to read the Raspberry Pi serial number to use as HWID """
+        """ Returns a dictionary containing the Raspberry Pi serial number.
+
+        :return: A dictionary containing:
+
+        .. code-block:: text
+
+            {
+                "serialNumber":"RPI0123456789"
+            }
+
+        :rtype: dict
+
+        """
         try:
             serialNumber = {}
             with open('/sys/firmware/devicetree/base/serial-number') as f:
@@ -177,11 +257,38 @@ class ModMAIN:
             return -1
 
     def getModuleVersion(self):
-        """ Return the ESDK module version """
+        """ Returns a dictionary containing ESDK module version.
+
+        :return: A dictionary containing:
+
+        .. code-block:: text
+
+            {
+                "moduleVerson":"0.0.1"
+            }
+
+        :rtype: dict
+
+        """
         return {"moduleVersion": pkg_resources.get_distribution('DesignSpark.ESDK').version}
 
     def getUndervoltageStatus(self):
-        """ Try to read the undervoltage status """
+        """ Returns a dictionary containing the Raspberry Pi throttle status and code.
+
+        :return: A dictionary containing (throttle_state is optional, and only populated should a nonzero code exist)
+
+        .. code-block:: text
+
+            {
+                "throttle_state":{
+                    "code":0,
+                    "throttle_state":""
+                }
+            }
+
+        :rtype: dict
+
+        """
         try:
             cmdOutput = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True)
             statusData = cmdOutput.stdout.decode('ascii').strip().strip("throttled=")
@@ -218,7 +325,13 @@ class ModMAIN:
             return -1
 
     def setPower(self, vcc3=False, vcc5=False):
-        """ Switch sensor power rails according to variables passed in """
+        """ Switches 3.3V and 5V sensor power supply rails according to supplied arguments.
+
+        :param vcc3: 3.3V sensor power supply status, defaults to False
+        :type vcc3: bool, optional
+        :param vcc5: 5V sensor power supply status, defaults to False
+        :type vcc5: bool, optional
+        """
         try:
             self.logger.debug("Setting sensor power rails, 3V3: {}, 5V: {}".format(vcc3, vcc5))
             GPIO.output(SENSOR_3V3_EN, vcc3)
@@ -227,7 +340,11 @@ class ModMAIN:
             raise e
 
     def setBuzzer(self, freq=0):
-        """ Set a PWM frequency on the buzzer output """
+        """ Sets a PWM frequency on the buzzer output.
+
+        :param freq: Buzzer frequency, 0 stops the buzzer
+        :type freq: int, optional
+        """
         try:
             if freq > 0:
                 self.logger.debug("Setting buzzer frequency to {}".format(freq))
@@ -239,3 +356,35 @@ class ModMAIN:
                 self.buzzer_pwm.stop()
         except Exception as e:
             raise e
+
+    def loadPlugins(self):
+        """ Attempts to load and instantiate plugins from a specified folder. """
+        if self.pluginDir == None:
+            cwd = os.getcwd()
+            self.pluginFullPath = cwd + "/plugins"
+            self.logger.debug("No plugin folder provided, using default")
+            self.logger.debug("Current working directory: {}, plugins path: {}".format(cwd, self.pluginFullPath))
+        else:
+            self.pluginFullPath = self.pluginDir
+
+        # Create a list of available plugin modules
+        for filename in os.listdir(self.pluginFullPath):
+            modulename, extension = os.path.splitext(filename)
+            if extension == '.py':
+                file, path, descr = imp.find_module(modulename, [self.pluginFullPath])
+                if file:
+                    try:
+                        self.logger.debug("Found plugin module: {}".format(file.name))
+                        module = imp.load_module(modulename, file, path, descr)
+                        self.pluginsModuleList.append(module)
+                    except Exception as e:
+                        self.logger.error("Could not load plugin {}! Reason {}".format(file.name, e))
+
+        # Create a list of instantiated plugin classes
+        for pluginModule in self.pluginsModuleList:
+            for name, obj in inspect.getmembers(pluginModule):
+                if inspect.isclass(obj):
+                    self.logger.debug("Created plugin class {}".format(obj))
+                    self.plugins.append(obj())
+
+        self.logger.info("Loaded {} plugin(s)".format(len(self.plugins)))
