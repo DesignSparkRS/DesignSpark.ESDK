@@ -18,6 +18,15 @@ ADC_REF = 3.000
 ADC_UPPER = 0x7FFF
 
 class ModNO2:
+	""" This is a class that handles interfacing with the ESDK-PM2 board.
+
+	:param sensitivity: Sensitivity code from barcode on sensor
+	:type sensitivity: float
+	:param tia_gain: Transimpedance amplifier gain from sensor datasheet
+	:type tia_gain: float
+	:param voffset: Offset voltage used in gas calculation
+	:type voffset: float
+	"""
 	def __init__(self, sensitivity=-20.86, tia_gain=499, voffset=0):
 		try:
 			self.bus = smbus2.SMBus(1)
@@ -40,14 +49,19 @@ class ModNO2:
 		self._resetADC()
 
 	def _resetADC(self):
-		""" Issue reset command to ADC """
+		""" Issues reset command to ADC. """
 		try:
 			self.bus.write_byte(ADC_ADDR, 0x06)
 		except Exception as e:
 			raise e
 
 	def _isDataReady(self):
-		""" Query ADC to see if data is available to be read """
+		""" Queries ADC to see if data is available to be read.
+
+		:return: True or false if ADC data is available.
+		:rtype: bool
+
+		"""
 		try:
 			write = i2c_msg.write(ADC_ADDR, [0x24])
 			read = i2c_msg.read(ADC_ADDR, 1)
@@ -63,7 +77,12 @@ class ModNO2:
 			raise e
 
 	def _readVrefChannel(self):
-		""" Read and convert AIN1 (sensor Vref) to a voltage """
+		""" Read and convert AIN1 (sensor Vref) to a voltage. 
+
+		:return: The voltage of AIN1 (sensor Vref).
+		:rtype: float
+
+		"""
 		try:
 			# 0x81 is the config register data
 			# AINp = AIN1, AINn = GND
@@ -92,7 +111,12 @@ class ModNO2:
 			raise e
 
 	def _readVgasChannel(self):
-		""" Read and convert AIN0 (sensor Vgas) to a voltage """
+		""" Read and convert AIN0 (sensor Vgas) to a voltage. 
+
+		:return: The voltage of AIN0 (sensor Vgas).
+		:rtype: float
+
+		"""
 		try:
 			# 0x61 is the config register data
 			# AINp = AIN0, AINn = GND
@@ -121,7 +145,12 @@ class ModNO2:
 			raise e
 
 	def _readVtempChannel(self):
-		""" Read and convert AIN2 (sensor Vtemp) to a voltage """
+		""" Read and convert AIN2 (sensor Vtemp) to a voltage.
+
+		:return: The voltage of AIN2 (sensor Vtemp).
+		:rtype: float
+		
+		"""
 		try:
 			# 0xA1 is the config register data
 			# AINp = AIN2, AINn = GND
@@ -150,6 +179,12 @@ class ModNO2:
 			raise e
 
 	def readNO2(self):
+		""" Read ADC and calculate an NO2 reading. 
+
+		:return: The NO2 concentration.
+		:rtype: float
+
+		"""
 		vgas = self._readVgasChannel()
 		vref = self._readVrefChannel()
 
@@ -163,6 +198,24 @@ class ModNO2:
 			return -1
 
 	def readSensors(self):
+		""" Reads sensor and returns a dictionary containing module version, and all readings.
+
+        :return: A dictionary containing
+
+        .. code-block:: text
+            
+            {
+                "no2":{
+                    "sensor":"NO20.1",
+                    "no2":2.1,
+                }
+            }
+            
+        Or -1 if data is unavailable
+
+        :rtype: dict, int
+
+        """
 		try:
 			sensorData = {}
 			no2 = self.readNO2()
