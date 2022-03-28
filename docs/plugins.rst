@@ -52,11 +52,11 @@ An example basic plugin that reads a GPIO pin is provided below::
 Plugin Functionality Usage
 --------------------------
 
-By default, ``ModMAIN`` looks for a ``plugins`` directory in the current working directory of the Python script that has instantiated the class, but this can be overridden by providing the ``pluginFolder`` argument when instantiating the class. ::
+By default, ``ModMAIN`` looks for a ``plugins`` directory in the current working directory of the Python script that has instantiated the class, but this can be overridden by providing the ``pluginDir`` argument when instantiating the class. ::
 
-	mb = MAIN.ModMAIN(config=config, debug=True, loggingLevel='off', pluginFolder="/home/pi/plugins")
+	mb = MAIN.ModMAIN(config=config, debug=True, loggingLevel='off', pluginDir="/home/pi/plugins")
 
-Plugins are loaded using the ``loadPlugins`` function, which attempts to import each module found in the specified folder.
+Plugins are loaded using the ``loadPlugins`` function, which attempts to import each module found in the specified directory.
 
 Calling the function ``readAllModules`` attempts to read all the default sensor modules (i.e. THV, CO2 and PM2), and then attempts to read the plugin sensors. The function then returns a dictionary containing all the available sensor data.
 
