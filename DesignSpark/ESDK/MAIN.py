@@ -17,20 +17,24 @@ import os
 import RPi.GPIO as GPIO
 from gpsdclient import GPSDClient
 from . import AppLogger
-from . import MAIN, THV, CO2, PM2, NO2
+from . import MAIN, THV, CO2, PM2, NO2, NRD, FDH
 
 possibleModules = {
     "THV": 0x44, 
     "CO2": 0x62, 
     "PM2": 0x69,
-    "NO2": 0x40
+    "NO2": 0x40,
+    "NRD": 0x60,
+    "FDH": 0x5D
 }
 
 moduleTypeDict = {
     'THV': THV,
     'CO2': CO2,
     'PM2': PM2,
-    'NO2': NO2
+    'NO2': NO2,
+    "NRD": NRD,
+    "FDH": FDH
 }
 
 # GPIOs used for board features
@@ -86,13 +90,15 @@ class ModMAIN:
 
     def _parseConfig(self):
         """ Parse config when mainboard initialised """
-        if self.configDict['ESDK']['gps'] is not None:
-            if self.configDict['ESDK']['gps'] == True:
-                self.logger.info("GPS is enabled")
-                self.gps = GPSDClient(host="localhost")
-                gpsHandlerThreadHandle = threading.Thread(target=self._gpsHandlerThread, daemon=True)
-                gpsHandlerThreadHandle.name = "gpsHandlerThread"
-                gpsHandlerThreadHandle.start()
+        if 'ESDK' in self.configDict:
+            if 'gps' in self.configDict['ESDK']:
+                if self.configDict['ESDK']['gps'] is not None:
+                    if self.configDict['ESDK']['gps'] == True:
+                        self.logger.info("GPS is enabled")
+                        self.gps = GPSDClient(host="localhost")
+                        gpsHandlerThreadHandle = threading.Thread(target=self._gpsHandlerThread, daemon=True)
+                        gpsHandlerThreadHandle.name = "gpsHandlerThread"
+                        gpsHandlerThreadHandle.start()
 
     def _gpsHandlerThread(self):
         """ Thread for polling GPS module. """
@@ -201,6 +207,12 @@ class ModMAIN:
 
                 if moduleName == "NO2":
                     self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModNO2()
+
+                if moduleName == "NRD":
+                    self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModNRD()
+
+                if moduleName == "FDH":
+                    self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModFDH()
             except Exception as e:
                 self.logger.error("Could not create module {}, reason {}".format(moduleName, e))
 
