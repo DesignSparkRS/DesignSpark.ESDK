@@ -61,6 +61,9 @@ def getLogger(name, debug=False, loggingSetup='full'):
 
     """
     logger = logging.getLogger(name)
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    
     if debug:
         logger.setLevel(logging.DEBUG)
     else:
