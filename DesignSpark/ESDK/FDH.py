@@ -15,11 +15,13 @@ SFA_ADDR = 0x5D
 
 class ModFDH:
 	""" This is a class that handles interfacing with the ESDK-FDH board. """
-	def _init__(self):
+	def __init__(self):
 		try:
 			self.bus = smbus2.SMBus(1)
 		except Exception as e:
 			raise e
+
+		self._startPeriodicMeasurement()
 
 	def _startPeriodicMeasurement(self):
 		""" Starts the sensor periodic measurement mode. """
@@ -39,6 +41,9 @@ class ModFDH:
 		try:
 			write = i2c_msg.write(SFA_ADDR, [0x03, 0x27])
 			read = i2c_msg.read(SFA_ADDR, 9)
+			self.bus.i2c_rdwr(write)
+			time.sleep(0.005)
+			self.bus.i2c_rdwr(write, read)
 			return list(read)
 		except Exception as e:
 			raise e
