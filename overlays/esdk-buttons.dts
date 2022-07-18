@@ -1,0 +1,92 @@
+/*
+ * Device Tree Overlay for ESDK hardware buttons
+ * RS Components 2022
+ *
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+        compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
+
+        fragment@0 {
+                // Configure GPIO pin controller
+                target = <&gpio>;
+                __overlay__ {
+                        shutdown_button_pins: shutdown_button_pins@5 {
+                                brcm,pins = <5>; // GPIO number 5
+                                brcm,function = <0>; // 0 = input, 1 = output
+                                brcm,pull = <2>; // 0 = none, 1 = pulldown, 2 = pullup
+                        };
+
+                        right_button_pins: right_button_pins@6 {
+                                brcm,pins = <6>; // GPIO number 6
+                                brcm,function = <0>; // 0 = input, 1 = output
+                                brcm,pull = <2>; // 0 = none, 1 = pulldown, 2 = pullup
+                        };
+
+                        left_button_pins: left_button_pins@13 {
+                                brcm,pins = <13>; // GPIO number 6
+                                brcm,function = <0>; // 0 = input, 1 = output
+                                brcm,pull = <2>; // 0 = none, 1 = pulldown, 2 = pullup
+                        };
+                };
+        };
+
+        fragment@1 {
+                target-path = "/soc";
+                __overlay__ {
+                        shutdown_button: shutdown_button@5 {
+                                compatible = "gpio-keys";
+                                #address-cells = <1>;
+                                #size-cells = <0>;
+                                pinctrl-names = "default";
+                                pinctrl-0 = <&shutdown_button_pins>;
+
+                                status = "okay";
+
+                                shutdown@5 {
+                                        label = "shutdown";
+                                        linux,code = <116>; // KEY_POWER
+                                        gpios = <&gpio 5 1>;
+                                        debounce-interval = <50>; // milliseconds
+                                };
+                        };
+
+                        right_button: right_button@6 {
+                                compatible = "gpio-keys";
+                                #address-cells = <1>;
+                                #size-cells = <0>;
+                                pinctrl-names = "default";
+                                pinctrl-0 = <&right_button_pins>;
+
+                                status = "okay";
+
+                                right@6 {
+                                        label = "right";
+                                        linux,code = <106>; // KEY_RIGHT
+                                        gpios = <&gpio 6 1>;
+                                        debounce-interval = <50>; // milliseconds
+                                };
+                        };
+
+                        left_button: left_button@13 {
+                                compatible = "gpio-keys";
+                                #address-cells = <1>;
+                                #size-cells = <0>;
+                                pinctrl-names = "default";
+                                pinctrl-0 = <&left_button_pins>;
+
+                                status = "okay";
+
+                                left@13 {
+                                        label = "left";
+                                        linux,code = <105>; // KEY_LEFT
+                                        gpios = <&gpio 13 1>;
+                                        debounce-interval = <50>; // milliseconds
+                                };
+                        };
+                };
+        };
+};
