@@ -8,7 +8,7 @@ setup(
     name = 'DesignSpark.ESDK',
     namespace_packages=['DesignSpark'],
     packages = ['DesignSpark.ESDK'],
-    version = '2022.7',
+    version = '22.7.0',
     description = 'DesignSpark ESDK support library',
     author = 'RS Components',
     author_email = 'maint@abopen.com',
