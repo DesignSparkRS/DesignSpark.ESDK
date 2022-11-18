@@ -3,7 +3,11 @@
 .. toctree::
    :maxdepth: 1
    :numbered:
-   :hidden:
 
    plugins
    api
+
+License
+-------
+
+.. include:: ../COPYING
