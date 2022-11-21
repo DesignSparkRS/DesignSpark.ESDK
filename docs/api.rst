@@ -36,6 +36,20 @@ API
 	:members:
 	:undoc-members:
 
+:mod:`DesignSpark.ESDK.NRD`
+"""""""""""""""""""""""""""
+
+.. automodule:: DesignSpark.ESDK.NRD
+	:members:
+	:undoc-members:
+
+:mod:`DesignSpark.ESDK.FDH`
+"""""""""""""""""""""""""""
+
+.. automodule:: DesignSpark.ESDK.FDH
+	:members:
+	:undoc-members:
+
 :mod:`DesignSpark.ESDK.AppLogger`
 """""""""""""""""""""""""""""""""
 
