@@ -1,5 +1,5 @@
 DesignSpark.ESDK
-===============================
+================
 
 .. image:: https://raw.githubusercontent.com/DesignSparkRS/DesignSpark.ESDK/main/docs/images/DesignSpark_ESDK_Library.png
    :alt: Logo
