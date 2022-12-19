@@ -11,4 +11,8 @@ Table of Contents
    api
    plugins
 
+Licensing
+---------
+
 .. include:: ../LICENSE.rst
+   :literal:
