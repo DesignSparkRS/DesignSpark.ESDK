@@ -26,13 +26,16 @@ class ModNO2:
 	:param sensitivity: Sensitivity code from barcode on sensor
 	:type sensitivity: float
 	:param tia_gain: Transimpedance amplifier gain from sensor datasheet
-	:type tia_gain: float
+	:type tia_gain: float, optional - default 499
 	:param voffset: Offset voltage used in gas calculation
-	:type voffset: float
+	:type voffset: float, optional - default 0
 	:param movingAverageWindow: Window size for the NO2 moving average
-	:type movingAverageWindow: int
+	:type movingAverageWindow: int, optional - default 15
 	"""
-	def __init__(self, sensitivity=-20.86, tia_gain=499, voffset=0, movingAverageWindow=15):
+	def __init__(self, sensitivity=None, tia_gain=499, voffset=0, movingAverageWindow=15):
+		if sensitivity == None:
+			raise Exception("No NO2 sensitivity code provided")
+
 		try:
 			self.bus = smbus2.SMBus(1)
 
@@ -209,7 +212,7 @@ class ModNO2:
 			return value
 
 	def _adcPollingThread(self):
-		""" Thread that polls the ADC to provid an updated NO2 value every five seconds """
+		""" Thread that polls the ADC to provide an updated NO2 value every five seconds """
 		vref = -1
 		vgasList = []
 		vgasLastMode = 0

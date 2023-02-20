@@ -123,7 +123,7 @@ class ModMAIN:
                         self.gpsStatus['gpsStatus'].update({'satellitesUsed': satellitesUsedCount})
 
             except Exception as e:
-                self.logger.error("Error getting GPS location, reason {}".format(e))
+                self.logger.error("Error getting GPS location, reason: {}".format(e))
 
     def _probeModules(self):
         """ Probes I2C bus to attempt to find sensor modules. """
@@ -206,7 +206,11 @@ class ModMAIN:
                     self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModPM2()
 
                 if moduleName == "NO2":
-                    self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModNO2()
+                    if "NO2" in self.configDict:
+                        sensitivityCode = self.configDict["NO2"]["sensitivity"]
+                        self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModNO2(sensitivity=sensitivityCode)
+                    else:
+                        raise Exception("No NO2 module configuration provided")
 
                 if moduleName == "NRD":
                     self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModNRD()
@@ -214,7 +218,7 @@ class ModMAIN:
                 if moduleName == "FDH":
                     self.sensorModules[moduleName] = moduleTypeDict[moduleName].ModFDH()
             except Exception as e:
-                self.logger.error("Could not create module {}, reason {}".format(moduleName, e))
+                self.logger.error("Could not create module {}, reason: {}".format(moduleName, e))
 
     def readAllModules(self):
         """ Reads all sensor modules and returns a dictionary containing sensor data. """
@@ -225,7 +229,7 @@ class ModMAIN:
                 if data != -1:
                     self.sensorData.update(data)
         except Exception as e:
-            self.logger.error("Could not read module {}, reason {}".format(name, e))
+            self.logger.error("Could not read module {}, reason: {}".format(name, e))
 
         # Read loaded plugins
         try:
@@ -237,9 +241,9 @@ class ModMAIN:
                     if data != -1:
                         self.sensorData.update(data)
                 except Exception as e:
-                    self.logger.error("Could not read plugin {}, reason {}".format(pluginName, e))
+                    self.logger.error("Could not read plugin {}, reason: {}".format(pluginName, e))
         except Exception as e:
-            self.logger.error("Error handling plugins, reason {}".format(e))
+            self.logger.error("Error handling plugins, reason: {}".format(e))
 
         self.logger.debug("Sensor data {}".format(self.sensorData))
         return self.sensorData
@@ -265,7 +269,7 @@ class ModMAIN:
                 self.logger.info("Hardware ID is {}".format(serialNumber['hardwareId']))
             return serialNumber
         except Exception as e:
-            self.logger.error("Could not retrieve serial number, reason {}".format(e))
+            self.logger.error("Could not retrieve serial number, reason: {}".format(e))
             return -1
 
     def getModuleVersion(self):
@@ -333,7 +337,7 @@ class ModMAIN:
             return response
 
         except Exception as e:
-            self.logger.error("Could not retrieve undervoltage status, reason {}".format(e))
+            self.logger.error("Could not retrieve undervoltage status, reason: {}".format(e))
             return -1
 
     def setPower(self, vcc3=False, vcc5=False):
