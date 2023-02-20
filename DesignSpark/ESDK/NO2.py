@@ -7,7 +7,10 @@ ESDK NO2 board interface
 
 import time
 import smbus2
+import threading
+import math
 from smbus2 import i2c_msg
+from statistics import mode
 
 moduleVersionString = "NO20.1"
 
@@ -26,8 +29,10 @@ class ModNO2:
 	:type tia_gain: float
 	:param voffset: Offset voltage used in gas calculation
 	:type voffset: float
+	:param movingAverageWindow: Window size for the NO2 moving average
+	:type movingAverageWindow: int
 	"""
-	def __init__(self, sensitivity=-20.86, tia_gain=499, voffset=0):
+	def __init__(self, sensitivity=-20.86, tia_gain=499, voffset=0, movingAverageWindow=15):
 		try:
 			self.bus = smbus2.SMBus(1)
 
@@ -41,12 +46,18 @@ class ModNO2:
 			# Voffset figure used in calculation of gas concentration
 			self.voffset = voffset
 
-			# Constant used in calculation of gas concentration
-			self.m = self.sensitivity * self.tia_gain * (10^-9) * (10^3)
+			self.movingAverageWindow = movingAverageWindow
+
+			self.no2AverageList = []
+			# NO2 value updated in thread
+			self.no2Value = 0
 		except Exception as e:
 			raise e
 
 		self._resetADC()
+		adcPollingThreadHandle = threading.Thread(target=self._adcPollingThread, daemon=True)
+		adcPollingThreadHandle.name = "no2_adcPollingThreadHandle"
+		adcPollingThreadHandle.start()
 
 	def _resetADC(self):
 		""" Issues reset command to ADC. """
@@ -178,24 +189,76 @@ class ModNO2:
 		except Exception as e:
 			raise e
 
+	def _calculateMovingAverage(self, new_data_point, data_list, average_size):
+		""" Function to calculate a simple moving average """
+		# Add fresh data
+		data_list.insert(0, new_data_point)
+		try:
+			# Remove nth item in list
+			data_list.pop(average_size)
+		except Exception as e:
+			pass
+		total = 0
+		total = sum(data_list)
+        
+		#value = math.ceil(total / len(data_list))
+		value = round(total / len(data_list), 2)
+		if(value == None):
+			return 0
+		else:
+			return value
+
+	def _adcPollingThread(self):
+		""" Thread that polls the ADC to provid an updated NO2 value every five seconds """
+		vref = -1
+		vgasList = []
+		vgasLastMode = 0
+
+		while vref == -1:
+			vref = self._readVrefChannel()
+
+		while True:
+			try:
+				# Take 10 voltage readings from ADC
+				for i in range(1, 10):
+					vgas = -1
+					# Wait until ADC says data is available
+					while vgas == -1:
+						vgas = self._readVgasChannel()
+						time.sleep(0.1)
+
+					# Append each sample to list and wait before taking another reading
+					vgasList.append(vgas)
+					time.sleep(0.25)
+				# Take mode value for use in calculations to help reduce sensor noise (ADC and inputs seem noisy)
+				try:
+					vgasLastMode = vgas
+					vgas = mode(vgasList)
+				except Exception as e:
+					vgasList.clear()
+
+				if vgas != -1 and vref != -1:
+					vgas0 = vref + self.voffset
+					conc = (vgas - vgas0) / (self.tia_gain * 1e3) / (self.sensitivity * 1e-9)
+					conc = round(conc, 2)
+			except Exception as e:
+				pass
+
+			# Calculate moving average to use for value
+			self.no2Value = self._calculateMovingAverage(conc, self.no2AverageList, self.movingAverageWindow)
+
+			vgasList.clear()
+			time.sleep(2.5)
+
 	def readNO2(self):
-		""" Read ADC and calculate an NO2 reading. 
+		""" Returns an NO2 reading. 
 
 		:return: The NO2 concentration.
 		:rtype: float
 
 		"""
-		vgas = self._readVgasChannel()
-		vref = self._readVrefChannel()
 
-		if vgas != -1 and vref != -1:
-			vgas0 = vref + self.voffset
-
-			conc = (1 / self.m) * (vgas - vgas0)
-
-			return round(conc, 2)
-		else:
-			return -1
+		return self.no2Value
 
 	def readSensors(self):
 		""" Reads sensor and returns a dictionary containing module version, and all readings.
