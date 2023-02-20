@@ -6,4 +6,4 @@
 A Python library for use with DesignSpark ESDK boards.
 """
 
-__version__ = '23.2.0'
+__version__ = '23.2.1'
